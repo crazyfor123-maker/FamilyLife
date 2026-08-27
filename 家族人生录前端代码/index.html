@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="creative-medium" content="interactive-prototype" />
+  <title>家族人生录 - APP原型</title>
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="phone-stage">
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div id="root"></div>
+      </div>
+      <div class="phone-home-indicator"></div>
+    </div>
+  </div>
+
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+  <script src="https://sf3-scmcdn-cn.feishucdn.com/obj/feishu-static/miaoda/coding-unpkg-sdk/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+  <!-- API 层 -->
+  <script type="text/babel" src="src/api/request.js"></script>
+  <script type="text/babel" src="src/api/auth.js"></script>
+  <script type="text/babel" src="src/api/family.js"></script>
+  <script type="text/babel" src="src/api/member.js"></script>
+  <script type="text/babel" src="src/api/person.js"></script>
+  <script type="text/babel" src="src/api/kinship.js"></script>
+  <script type="text/babel" src="src/api/ai.js"></script>
+  <script type="text/babel" src="src/api/asr.js"></script>
+  <script type="text/babel" src="src/api/tts.js"></script>
+  <script type="text/babel" src="src/api/interview.js"></script>
+  <script type="text/babel" src="src/api/lifebook.js"></script>
+  <script type="text/babel" src="src/api/timeline.js"></script>
+  <script type="text/babel" src="src/api/events.js"></script>
+  <script type="text/babel" src="src/api/message.js"></script>
+  <script type="text/babel" src="src/api/storage.js"></script>
+  <script type="text/babel" src="src/api/permission.js"></script>
+  <script type="text/babel" src="src/api/bookExport.js"></script>
+  <script type="text/babel" src="src/api/collab.js"></script>
+  <script type="text/babel" src="src/api/comment.js"></script>
+  <script type="text/babel" src="src/api/ocr.js"></script>
+  <script type="text/babel" src="src/api/share.js"></script>
+
+  <!-- 全局状态 -->
+  <script type="text/babel" src="src/context/AuthContext.jsx"></script>
+  <script type="text/babel" src="src/context/FamilyContext.jsx"></script>
+
+  <!-- Mock数据（保留为降级方案） -->
+  <script type="text/babel" src="src/mockData.js"></script>
+
+  <!-- 公共组件 -->
+  <script type="text/babel" src="src/components/Icons.jsx"></script>
+  <script type="text/babel" src="src/components/BottomTab.jsx"></script>
+  <script type="text/babel" src="src/components/PageHeader.jsx"></script>
+  <!-- 补充组件 -->
+  <script type="text/babel" src="src/components/AIMaterialAnalyzer.jsx"></script>
+  <script type="text/babel" src="src/components/AIQuestionGenerator.jsx"></script>
+  <script type="text/babel" src="src/components/AudioPlayer.jsx"></script>
+  <script type="text/babel" src="src/components/CollaborativeEditor.jsx"></script>
+  <script type="text/babel" src="src/components/CommentSection.jsx"></script>
+  <script type="text/babel" src="src/components/Recorder.jsx"></script>
+
+  <!-- 工具类 -->
+  <script type="text/babel" src="src/utils/AIOfflineEngine.js"></script>
+  <script type="text/babel" src="src/utils/AudioPlayer.js"></script>
+  <script type="text/babel" src="src/utils/VoiceGuide.js"></script>
+  <script type="text/babel" src="src/utils/undo.js"></script>
+
+  <!-- 服务层 -->
+  <script type="text/babel" src="src/services/collabWebSocket.js"></script>
+  <script type="text/babel" src="src/services/localStorage.js"></script>
+  <script type="text/babel" src="src/services/offline.js"></script>
+
+  <!-- 页面 -->
+  <script type="text/babel" src="src/pages/LoginPage.jsx"></script>
+  <script type="text/babel" src="src/pages/HomePage.jsx"></script>
+  <script type="text/babel" src="src/pages/FamilyListPage.jsx"></script>
+  <script type="text/babel" src="src/pages/FamilyCreatePage.jsx"></script>
+  <script type="text/babel" src="src/pages/FamilyTreePage.jsx"></script>
+  <script type="text/babel" src="src/pages/FamilyMessagePage.jsx"></script>
+  <script type="text/babel" src="src/pages/FamilySettingsPage.jsx"></script>
+  <script type="text/babel" src="src/pages/PersonPage.jsx"></script>
+  <script type="text/babel" src="src/pages/PersonCreatePage.jsx"></script>
+  <script type="text/babel" src="src/pages/PersonEditPage.jsx"></script>
+  <script type="text/babel" src="src/pages/PersonTimelinePage.jsx"></script>
+  <script type="text/babel" src="src/pages/InterviewPage.jsx"></script>
+  <script type="text/babel" src="src/pages/InterviewListPage.jsx"></script>
+  <script type="text/babel" src="src/pages/InterviewOutlinePage.jsx"></script>
+  <script type="text/babel" src="src/pages/InterviewRecordPage.jsx"></script>
+  <script type="text/babel" src="src/pages/TranscriptPage.jsx"></script>
+  <script type="text/babel" src="src/pages/LifeBookPage.jsx"></script>
+  <script type="text/babel" src="src/pages/LifeBookGeneratePage.jsx"></script>
+  <script type="text/babel" src="src/pages/LifeBookVersionPage.jsx"></script>
+  <script type="text/babel" src="src/pages/BookReaderPage.jsx"></script>
+  <script type="text/babel" src="src/pages/BookPrintPage.jsx"></script>
+  <script type="text/babel" src="src/pages/BookEditPage.jsx"></script>
+  <script type="text/babel" src="src/pages/BookSharePage.jsx"></script>
+  <script type="text/babel" src="src/pages/CollabEditorPage.jsx"></script>
+  <script type="text/babel" src="src/pages/TimelinePage.jsx"></script>
+  <script type="text/babel" src="src/pages/EventsPage.jsx"></script>
+  <script type="text/babel" src="src/pages/MessageBoardPage.jsx"></script>
+  <script type="text/babel" src="src/pages/AlbumPage.jsx"></script>
+  <script type="text/babel" src="src/pages/RelationshipGraphPage.jsx"></script>
+  <script type="text/babel" src="src/pages/MemberManagementPage.jsx"></script>
+  <script type="text/babel" src="src/pages/InviteMemberPage.jsx"></script>
+  <script type="text/babel" src="src/pages/JoinMemberPage.jsx"></script>
+  <script type="text/babel" src="src/pages/StoryPublishPage.jsx"></script>
+  <script type="text/babel" src="src/pages/StoryEditPage.jsx"></script>
+  <script type="text/babel" src="src/pages/BackupPage.jsx"></script>
+  <script type="text/babel" src="src/pages/RestorePage.jsx"></script>
+  <script type="text/babel" src="src/pages/MaterialCenterPage.jsx"></script>
+  <script type="text/babel" src="src/pages/OCRImportPage.jsx"></script>
+  <script type="text/babel" src="src/pages/CloudStoragePage.jsx"></script>
+  <script type="text/babel" src="src/pages/AIPrivacyPage.jsx"></script>
+  <script type="text/babel" src="src/pages/SearchPage.jsx"></script>
+  <script type="text/babel" src="src/pages/ProfilePage.jsx"></script>
+
+  <!-- F3.9 个人家族寄语 -->
+  <script type="text/babel" src="src/pages/PersonMessagePage.jsx"></script>
+  <!-- F3.17 关系校验 -->
+  <script type="text/babel" src="src/pages/RelationshipValidationPage.jsx"></script>
+  <!-- F3.19 OCR导入 -->
+  <!-- OCRImportPage.jsx already registered above -->
+  <!-- F3.21 OCR校对 -->
+  <script type="text/babel" src="src/pages/OCRReviewPage.jsx"></script>
+  <!-- OCR历史记录 -->
+  <script type="text/babel" src="src/pages/OCRHHistoryPage.jsx"></script>
+  <!-- 关系管理页面 -->
+  <script type="text/babel" src="src/pages/RelationshipManagePage.jsx"></script>
+  <!-- F3.20 智能建档 -->
+  <script type="text/babel" src="src/pages/SmartBuildPage.jsx"></script>
+
+  <!-- 主应用 -->
+  <script type="text/babel" src="src/App.jsx"></script>
+
+  <script>
+    function announceUpgrade() {
+      window.parent.postMessage({ type: 'miaoda:upgrade:available', kind: 'interactive-prototype' }, '*');
+    }
+    announceUpgrade();
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', announceUpgrade, { once: true });
+    }
+  </script>
+</body>
+</html>

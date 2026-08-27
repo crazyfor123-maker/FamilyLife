@@ -1,0 +1,102 @@
+// ===== F6.6 大事记创建 & F6.7 大事记浏览 & F6.8 大事记编辑 & F6.9 大事记删除 =====
+const express = require('express');
+const { v4: uuidv4 } = require('uuid');
+const router = express.Router();
+const { get, all, run } = require('../config/db');
+const { authenticate } = require('../middleware/auth');
+const { generateToken, ERROR_CODES } = require('../utils/helpers');
+
+// ===== 获取空间大事记列表（F6.7） =====
+router.get('/list/:spaceId', authenticate, async (req, res) => {
+  const { spaceId } = req.params;
+
+  const events = await all(
+    `SELECT fe.*, ua.nickname as author_name
+     FROM family_event fe
+     JOIN user_account ua ON fe.created_by = ua.user_id
+     WHERE fe.space_id = ?
+     ORDER BY fe.event_date ASC`,
+    [spaceId]
+  );
+
+  res.json({ code: 0, data: events });
+});
+
+// ===== 创建大事记（F6.6） =====
+router.post('/create', authenticate, async (req, res) => {
+  const { space_id, title, event_type, event_date, description } = req.body;
+
+  if (!space_id || !title || title.trim().length < 2) {
+    return res.status(400).json({ code: ERROR_CODES.INVALID_PARAMS, message: '请输入有效的大事件名称' });
+  }
+
+  const eventId = generateToken();
+  await run(
+    'INSERT INTO family_event (event_id, space_id, title, event_type, event_date, description, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [eventId, space_id, title.trim(), event_type || 'other', event_date || null, description || null, req.user.user_id]
+  );
+
+  res.json({ code: 0, message: '大事记创建成功', data: { event_id: eventId } });
+});
+
+// ===== 编辑大事记（F6.8） =====
+router.put('/:eventId', authenticate, async (req, res) => {
+  const { eventId } = req.params;
+  const { title, event_type, event_date, description } = req.body;
+
+  const event = await get('SELECT * FROM family_event WHERE event_id = ?', [eventId]);
+  if (!event) {
+    return res.status(404).json({ code: ERROR_CODES.OPERATION_FAILED, message: '事件不存在' });
+  }
+
+  const spaceMember = await get(
+    'SELECT role FROM space_member WHERE space_id = ? AND user_id = ?',
+    [event.space_id, req.user.user_id]
+  );
+  if (!spaceMember || (spaceMember.role !== 'owner' && spaceMember.role !== 'editor')) {
+    return res.status(403).json({ code: ERROR_CODES.NO_PERMISSION, message: '仅管理员和授权编辑可编辑' });
+  }
+
+  const updates = [];
+  const params = [];
+  if (title) { updates.push('title = ?'); params.push(title.trim()); }
+  if (event_type) { updates.push('event_type = ?'); params.push(event_type); }
+  if (event_date) { updates.push('event_date = ?'); params.push(event_date); }
+  if (description) { updates.push('description = ?'); params.push(description); }
+
+  if (updates.length === 0) return res.json({ code: 0, message: '无变更' });
+
+  params.push(eventId);
+  await run(
+    `UPDATE family_event SET ${updates.join(', ')}, updated_at = NOW() WHERE event_id = ?`,
+    params
+  );
+
+  res.json({ code: 0, message: '大事记已更新' });
+});
+
+// ===== 删除大事记（F6.9） =====
+router.delete('/:eventId', authenticate, async (req, res) => {
+  const { eventId } = req.params;
+
+  const event = await get('SELECT * FROM family_event WHERE event_id = ?', [eventId]);
+  if (!event) {
+    return res.status(404).json({ code: ERROR_CODES.OPERATION_FAILED, message: '事件不存在' });
+  }
+
+  const spaceMember = await get(
+    'SELECT role FROM space_member WHERE space_id = ? AND user_id = ?',
+    [event.space_id, req.user.user_id]
+  );
+  if (!spaceMember || spaceMember.role !== 'owner') {
+    return res.status(403).json({ code: ERROR_CODES.NO_PERMISSION, message: '仅创建者可删除' });
+  }
+
+  // F6.9 级联删除：删除关联故事和素材
+  await run('DELETE FROM timeline_story WHERE event_id = ?', [eventId]);
+  await run('DELETE FROM family_material WHERE event_id = ?', [eventId]);
+  await run('DELETE FROM family_event WHERE event_id = ?', [eventId]);
+  res.json({ code: 0, message: '大事记已删除' });
+});
+
+module.exports = router;

@@ -1,0 +1,134 @@
+// ===== 本地AI离线引擎 =====
+// 使用 WebAssembly/ONNX Runtime Web 实现离线AI推理
+
+class AIOfflineEngine {
+  constructor() {
+    this.model = null;
+    this.isLoaded = false;
+    this.modelPath = '/models/ai-interview.onnx';
+  }
+
+  /**
+   * 加载本地AI模型
+   */
+  async load() {
+    if (this.isLoaded) return true;
+
+    try {
+      // 检查浏览器是否支持 ONNX Runtime Web
+      if (!('onnxruntime' in window)) {
+        console.warn('浏览器不支持 ONNX Runtime Web');
+        return false;
+      }
+
+      // 加载模型
+      // 实际项目中需要从本地或CDN加载模型文件
+      this.model = await this._loadModel();
+      this.isLoaded = true;
+      return true;
+    } catch (err) {
+      console.error('加载本地AI模型失败:', err);
+      return false;
+    }
+  }
+
+  /**
+   * 加载模型文件
+   */
+  async _loadModel() {
+    // 模拟加载过程
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        // 在实际项目中，这里会加载真实的 ONNX 模型
+        // const model = await ort.InferenceSession.create(this.modelPath);
+        resolve({ model: 'mock' });
+      }, 1000);
+    });
+  }
+
+  /**
+   * 生成AI问题（离线）
+   * @param {string} context - 上下文信息
+   * @param {string} previousQuestion - 上一个问题
+   */
+  async generateQuestion(context, previousQuestion = '') {
+    if (!this.isLoaded) {
+      await this.load();
+    }
+
+    if (!this.isLoaded) {
+      throw new Error('本地AI模型未加载');
+    }
+
+    // 模拟离线推理
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        // 在实际项目中，这里会调用模型推理
+        // const input = { context, previous_question: previousQuestion };
+        // const output = await this.model.run(input);
+        const questions = [
+          '您能回忆一下小时候最难忘的事情吗？',
+          '您年轻时的梦想是什么？',
+          '您是如何认识祖太太的？',
+          '您工作中最自豪的事情是什么？',
+          '您觉得家族最宝贵的传统是什么？',
+        ];
+        resolve(questions[Math.floor(Math.random() * questions.length)]);
+      }, 500);
+    });
+  }
+
+  /**
+   * 生成追问（离线）
+   * @param {string} context - 上下文
+   * @param {string} answer - 长辈的回答
+   */
+  async generateFollowup(context, answer) {
+    if (!this.isLoaded) {
+      await this.load();
+    }
+
+    if (!this.isLoaded) {
+      throw new Error('本地AI模型未加载');
+    }
+
+    // 模拟离线推理
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const followups = [
+          '能详细说说当时的情况吗？',
+          '您当时是什么感受？',
+          '这件事对您的影响是什么？',
+          '后来怎么样了？',
+        ];
+        resolve(followups[Math.floor(Math.random() * followups.length)]);
+      }, 500);
+    });
+  }
+
+  /**
+   * 检查是否支持离线模式
+   */
+  static isSupported() {
+    // 检查浏览器是否支持必要的API
+    return (
+      typeof window !== 'undefined' &&
+      'onnxruntime' in window &&
+      'OfflineAudioContext' in window &&
+      'MediaRecorder' in window
+    );
+  }
+
+  /**
+   * 获取模型状态
+   */
+  getStatus() {
+    return {
+      loaded: this.isLoaded,
+      supported: AIOfflineEngine.isSupported(),
+      modelPath: this.modelPath,
+    };
+  }
+}
+
+Object.assign(window, { AIOfflineEngine });

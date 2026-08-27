@@ -1,0 +1,10 @@
+{
+  "name": "miaoda-design-html-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "onnxruntime-web": "^1.29.0",
+    "tesseract.js": "^7.0.0"
+  }
+}

@@ -1,0 +1,306 @@
+// ===== 9.3 素材管理中心 - 真实API+标签+重复检测 =====
+function MaterialCenterPage({ onBack }) {
+  const [activeCategory, setActiveCategory] = React.useState('all');
+  const [materials, setMaterials] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [showTagEditor, setShowTagEditor] = React.useState(false);
+  const [editingMaterial, setEditingMaterial] = React.useState(null);
+  const [tagInput, setTagInput] = React.useState('');
+  const [showDuplicateDetector, setShowDuplicateDetector] = React.useState(false);
+  const [duplicateGroups, setDuplicateGroups] = React.useState([]);
+
+  React.useEffect(() => {
+    loadMaterials();
+  }, []);
+
+  const loadMaterials = async () => {
+    setLoading(true);
+    try {
+      // 尝试从后端API加载
+      const { get } = await import('../api/request');
+      const res = await get('/material/list');
+      if (res && res.code === 0) {
+        setMaterials((res.data || []).map(m => ({
+          ...m,
+          tags: m.tags || [],
+          annotation: m.annotation || '',
+        })));
+      } else {
+        setMaterials(generateMockMaterials());
+      }
+    } catch {
+      setMaterials(generateMockMaterials());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateMockMaterials = () => [
+    { id: 1, type: 'audio', title: '朱老太爷_童年记忆_20240101.mp3', size: '12.5MB', date: '2024-01-01', category: '录音', tags: ['童年', '记忆'], annotation: '第一次采访录音' },
+    { id: 2, type: 'audio', title: '朱老太爷_求学经历_20240102.mp3', size: '8.3MB', date: '2024-01-02', category: '录音', tags: ['求学'], annotation: '' },
+    { id: 3, type: 'image', title: '家族合影_1950.jpg', size: '2.1MB', date: '1950-06-15', category: '照片', tags: ['合影', '家族'], annotation: '全家族大合影' },
+    { id: 4, type: 'image', title: '老宅门匾_1948.jpg', size: '1.8MB', date: '1948-03-20', category: '照片', tags: ['老宅'], annotation: '' },
+    { id: 5, type: 'text', title: '童年记忆_转写文本.txt', size: '15KB', date: '2024-01-01', category: '转写', tags: ['童年'], annotation: '' },
+    { id: 6, type: 'text', title: '求学经历_转写文本.txt', size: '22KB', date: '2024-01-02', category: '转写', tags: ['求学'], annotation: '' },
+    { id: 7, type: 'book', title: '人生之书_v1', size: '5.2MB', date: '2024-01-15', category: '书籍', tags: ['人生之书'], annotation: '' },
+    { id: 8, type: 'image', title: '毕业照_1955.jpg', size: '3.4MB', date: '1955-07-01', category: '照片', tags: ['毕业'], annotation: '' },
+  ];
+
+  const categories = ['all', '录音', '照片', '转写', '书籍'];
+  const icons = { '录音': '🎤', '照片': '📷', '转写': '📄', '书籍': '📚' };
+
+  // ===== 搜索过滤 =====
+  const filtered = activeCategory === 'all' ? materials : materials.filter(m => m.category === activeCategory);
+  const searched = searchQuery.trim()
+    ? filtered.filter(m =>
+        m.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        m.annotation?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : filtered;
+
+  // ===== 标签编辑 =====
+  const handleTagEdit = (material) => {
+    setEditingMaterial(material);
+    setTagInput('');
+    setShowTagEditor(true);
+  };
+
+  const handleAddTag = () => {
+    if (tagInput.trim() && !editingMaterial.tags.includes(tagInput.trim())) {
+      const updated = { ...editingMaterial, tags: [...editingMaterial.tags, tagInput.trim()] };
+      setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+      setEditingMaterial(updated);
+      setTagInput('');
+    }
+  };
+
+  const handleRemoveTag = (tag) => {
+    const updated = { ...editingMaterial, tags: editingMaterial.tags.filter(t => t !== tag) };
+    setMaterials(prev => prev.map(m => m.id === updated.id ? updated : m));
+    setEditingMaterial(updated);
+  };
+
+  // ===== 重复照片检测 =====
+  const handleDetectDuplicates = () => {
+    // 基于文件名相似度检测
+    const groups = {};
+    materials.filter(m => m.type === 'image').forEach(m => {
+      const baseName = m.title.replace(/\.[^.]+$/, '').toLowerCase();
+      // 模糊匹配：编辑距离
+      Object.keys(groups).forEach(key => {
+        if (levenshtein(key, baseName) <= 3) {
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(m);
+        }
+      });
+      if (!groups[baseName]) groups[baseName] = [m];
+    });
+
+    const duplicateGroups = Object.values(groups).filter(g => g.length > 1);
+    setDuplicateGroups(duplicateGroups);
+    setShowDuplicateDetector(true);
+  };
+
+  // 编辑距离算法
+  const levenshtein = (a, b) => {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        matrix[i][j] = b[i - 1] === a[j - 1]
+          ? matrix[i - 1][j - 1]
+          : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+      }
+    }
+    return matrix[b.length][a.length];
+  };
+
+  const handleDelete = (id) => {
+    if (!confirm('确定删除此素材？')) return;
+    setMaterials(prev => prev.filter(m => m.id !== id));
+    showToast('已删除');
+  };
+
+  const allTags = [...new Set(materials.flatMap(m => m.tags || []))];
+
+  return (
+    <div className="page-enter" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <StatusBar />
+      <PageHeader title="📦 素材管理" showBack={true} onBack={onBack} />
+
+      <div className="page-content no-tab" style={{ padding: '16px' }}>
+        {/* 分类统计 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
+          {[
+            { key: '录音', icon: '🎤', count: materials.filter(m => m.category === '录音').length, desc: '录音素材' },
+            { key: '照片', icon: '📷', count: materials.filter(m => m.category === '照片').length, desc: '照片素材' },
+            { key: '转写', icon: '📄', count: materials.filter(m => m.category === '转写').length, desc: '转写文本' },
+            { key: '书籍', icon: '📚', count: materials.filter(m => m.category === '书籍').length, desc: '人生之书' },
+          ].map(cat => (
+            <div key={cat.key} onClick={() => setActiveCategory(cat.key)} style={{
+              padding: '12px 8px', borderRadius: 'var(--radius-md)', textAlign: 'center', cursor: 'pointer',
+              border: activeCategory === cat.key ? '2px solid var(--ink-green)' : '1.5px solid var(--line-light)',
+              background: activeCategory === cat.key ? '#E8F5E9' : 'white',
+            }}>
+              <div style={{ fontSize: 24, marginBottom: 4 }}>{cat.icon}</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: activeCategory === cat.key ? 'var(--ink-green)' : 'var(--ink-primary)' }}>{cat.count}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-tertiary)' }}>{cat.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 搜索 + 操作按钮 */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input type="text" placeholder="搜索素材/标签..." value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ flex: 1, padding: '8px 12px', fontSize: 14, border: '1.5px solid var(--line-light)', borderRadius: 8, background: 'white' }} />
+          <button onClick={handleDetectDuplicates} style={{
+            padding: '8px 12px', fontSize: 12, border: '1.5px solid var(--line-light)', borderRadius: 8,
+            background: 'white', cursor: 'pointer', whiteSpace: 'nowrap',
+          }}>🔍 查重</button>
+        </div>
+
+        {/* 标签系统 */}
+        {allTags.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: 'var(--ink-tertiary)', marginBottom: 6 }}>🏷️ 全部标签</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {allTags.map(tag => (
+                <span key={tag} style={{
+                  padding: '4px 10px', borderRadius: 12, fontSize: 12,
+                  border: '1px solid var(--line-light)', background: '#F5F5F5',
+                  cursor: 'pointer',
+                }} onClick={() => setSearchQuery(tag)}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 筛选 */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto', paddingBottom: 4 }}>
+          {categories.map(c => (
+            <button key={c} onClick={() => setActiveCategory(c)} style={{
+              padding: '6px 14px', borderRadius: 'var(--radius-full)', fontSize: 13,
+              border: `1.5px solid ${activeCategory === c ? 'var(--ink-green)' : 'var(--line-light)'}`,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+              background: activeCategory === c ? 'var(--ink-green)' : 'white',
+              color: activeCategory === c ? 'var(--white)' : 'var(--ink-secondary)',
+            }}>{c === 'all' ? '全部' : c}</button>
+          ))}
+        </div>
+
+        {/* 素材列表 */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--ink-tertiary)' }}>加载中...</div>
+        ) : searched.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--ink-tertiary)' }}>暂无素材</div>
+        ) : (
+          searched.map(m => (
+            <div key={m.id} className="card" style={{ padding: '10px 12px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 24 }}>{icons[m.category] || '📄'}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, color: 'var(--ink-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-tertiary)' }}>{m.size} · {m.date}</div>
+                {m.tags && m.tags.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                    {m.tags.slice(0, 3).map(tag => (
+                      <span key={tag} style={{ fontSize: 10, background: '#E8F5E9', color: '#4A6741', padding: '1px 6px', borderRadius: 10 }}>{tag}</span>
+                    ))}
+                    {m.tags.length > 3 && <span style={{ fontSize: 10, color: 'var(--ink-tertiary)' }}>+{m.tags.length - 3}</span>}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => handleTagEdit(m)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 4 }} title="编辑标签">🏷️</button>
+              <button onClick={() => handleDelete(m.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 4 }}>🗑️</button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* 标签编辑弹窗 */}
+      {showTagEditor && editingMaterial && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}
+          onClick={() => setShowTagEditor(false)}>
+          <div style={{ background: 'white', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: '20px 16px 32px', width: '100%' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <span style={{ fontSize: 18, fontWeight: 600 }}>🏷️ 编辑标签</span>
+              <button onClick={() => setShowTagEditor(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 14, color: 'var(--ink-secondary)', display: 'block', marginBottom: 4 }}>素材</label>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{editingMaterial.title}</div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 14, color: 'var(--ink-secondary)', display: 'block', marginBottom: 4 }}>当前标签</label>
+              {editingMaterial.tags.length > 0 ? (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {editingMaterial.tags.map(tag => (
+                    <span key={tag} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#E8F5E9', color: '#4A6741', padding: '4px 10px', borderRadius: 12, fontSize: 13 }}>
+                      {tag}
+                      <button onClick={() => handleRemoveTag(tag)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--ink-tertiary)' }}>暂无标签</div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+                placeholder="输入新标签..." style={{ flex: 1, height: 44, border: '1.5px solid var(--line-soft)', borderRadius: 8, padding: '0 12px', fontSize: 16, boxSizing: 'border-box' }}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddTag(); }} />
+              <button onClick={handleAddTag} style={{ padding: '0 16px', background: 'var(--ink-green)', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>添加</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 重复检测弹窗 */}
+      {showDuplicateDetector && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowDuplicateDetector(false)}>
+          <div style={{ background: 'white', borderRadius: 16, padding: '20px 16px', width: '85%', maxWidth: 400, maxHeight: '80vh', overflow: 'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <span style={{ fontSize: 18, fontWeight: 600 }}>🔍 重复素材检测</span>
+              <button onClick={() => setShowDuplicateDetector(false)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {duplicateGroups.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: 'var(--ink-tertiary)' }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                <div>未发现重复素材</div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 14, color: 'var(--danger)', marginBottom: 12 }}>发现 {duplicateGroups.length} 组疑似重复素材：</div>
+                {duplicateGroups.map((group, gi) => (
+                  <div key={gi} style={{ background: '#FFF3E0', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>第 {gi + 1} 组：</div>
+                    {group.map(m => (
+                      <div key={m.id} style={{ fontSize: 13, padding: '4px 0', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{m.title}</span>
+                        <span style={{ fontSize: 11, color: 'var(--ink-tertiary)' }}>{m.date}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { MaterialCenterPage });

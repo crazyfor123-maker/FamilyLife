@@ -1,0 +1,401 @@
+// ===== F3.15 族谱可视化渲染 - 三种视图 =====
+// 树状图 + 辐射图 + 列表图，大字体，性能优化
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { getPersonRelations, buildFamilyTree, flattenTree, layoutTree, toggleExpand, findNode, getAllDescendants } from '../api/kinship';
+
+function FamilyTreePage({ onNavigate, spaceId = '1' }) {
+  const [viewMode, setViewMode] = useState('tree'); // tree | radial | list
+  const [nodes, setNodes] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [expandedNodes, setExpandedNodes] = useState(new Set());
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [showContextMenu, setShowContextMenu] = useState(null);
+  const [theme, setTheme] = useState('traditional'); // traditional | modern
+  const [fontSize, setFontSize] = useState(18); // 默认18sp
+  const [showLegend, setShowLegend] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedNode, setHighlightedNode] = useState(null);
+  const svgRef = useRef(null);
+  const containerRef = useRef(null);
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchDist, setTouchDist] = useState(null);
+
+  const isDark = theme === 'modern';
+  const bgColor = isDark ? '#1A1A2E' : '#FBF8F2';
+  const textColor = isDark ? '#E0E0E0' : '#212121';
+  const nodeBg = isDark ? '#2A2A4A' : '#FFFFFF';
+  const lineColor = isDark ? '#4CAF50' : '#4CAF50';
+  const spouseLineColor = '#FFB74D';
+
+  // 加载族谱数据
+  useEffect(() => { loadTree(); }, []);
+
+  const loadTree = async () => {
+    setLoading(true);
+    try {
+      const relationsRes = await getPersonRelations(spaceId, 1);
+      const relations = (relationsRes?.code === 0) ? relationsRes.data : [];
+      const tree = buildFamilyTree(relations, [], 1);
+      if (!tree) { setLoading(false); return; }
+
+      let flat = flattenTree(tree);
+
+      // 性能优化：100人以上默认渲染最近3代
+      const allDescendants = getAllDescendants(tree);
+      if (allDescendants.length > 100) {
+        flat = flat.filter(n => n.depth < 3);
+      }
+
+      const laidOut = layoutTree(flat, 120, 60, 30, 100);
+      setNodes(laidOut);
+      setExpandedNodes(new Set([1]));
+    } catch (err) {
+      console.error('加载族谱失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 缩放
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setScale(s => Math.max(0.3, Math.min(3, s + delta)));
+  }, []);
+
+  // 拖拽
+  const handleMouseDown = (e) => {
+    if (e.button === 0) {
+      setDragging(true);
+      setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+    }
+  };
+  const handleMouseMove = (e) => {
+    if (dragging) setOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+  const handleMouseUp = () => setDragging(false);
+
+  // 双指缩放
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      setTouchDist(Math.sqrt(dx * dx + dy * dy));
+      setTouchStart({ x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                      y: (e.touches[0].clientY + e.touches[1].clientY) / 2 });
+    } else if (e.touches.length === 1) {
+      setDragging(true);
+      setDragStart({ x: e.touches[0].clientX - offset.x, y: e.touches[0].clientY - offset.y });
+    }
+  };
+  const handleTouchMove = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2 && touchDist) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const delta = (dist - touchDist) / 200;
+      setScale(s => Math.max(0.3, Math.min(3, s + delta)));
+      setTouchDist(dist);
+    } else if (e.touches.length === 1 && dragging) {
+      setOffset({ x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y });
+    }
+  };
+  const handleTouchEnd = () => { setDragging(false); setTouchDist(null); setTouchStart(null); };
+
+  // 点击节点
+  const handleNodeClick = (node) => {
+    setSelectedNode(node);
+    setShowContextMenu(null);
+  };
+
+  // 双击展开/收拢
+  const handleNodeDblClick = (node) => {
+    if (node.children && node.children.length > 0) {
+      setExpandedNodes(prev => {
+        const next = new Set(prev);
+        next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+        return next;
+      });
+    }
+  };
+
+  // 双击空白区域缩放
+  const handleCanvasDblClick = () => {
+    setScale(s => s < 1.5 ? 2 : 1);
+  };
+
+  // 搜索定位
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    if (!query.trim()) { setHighlightedNode(null); return; }
+    const found = nodes.find(n => n.name?.toLowerCase().includes(query.toLowerCase()));
+    if (found) setHighlightedNode(found.id);
+  };
+
+  // 缩放按钮
+  const zoomIn = () => setScale(s => Math.min(3, s + 0.2));
+  const zoomOut = () => setScale(s => Math.max(0.3, s - 0.2));
+  const resetView = () => { setScale(1); setOffset({ x: 0, y: 0 }); };
+  const expandAll = () => {
+    const all = [];
+    const collect = (n) => { all.push(n.id); n.children?.forEach(collect); };
+    collect(nodes[0]);
+    setExpandedNodes(new Set(all));
+  };
+  const collapseAll = () => setExpandedNodes(new Set());
+
+  // 渲染节点
+  const renderNode = (node) => {
+    const isExpanded = expandedNodes.has(node.id);
+    const hasChildren = node.children && node.children.length > 0;
+    const isDeceased = node.status === 'deceased' || node.deathYear;
+    const isSelected = selectedNode?.id === node.id;
+    const isHighlighted = highlightedNode === node.id;
+    const genderColor = node.gender === '女' ? '#C2185B' : '#1565C0';
+    const bgColorNode = isDeceased ? '#9E9E9E' : (isSelected ? '#E8F5E9' : nodeBg);
+
+    return (
+      <g key={node.id} transform={`translate(${node.x}, ${node.y})`}
+        style={{ cursor: 'pointer', opacity: isHighlighted ? 1 : 0.9 }}>
+        {/* 节点矩形 */}
+        <rect width={120} height={60} rx={10} fill={bgColorNode}
+          stroke={isHighlighted ? '#FF9800' : (isSelected ? '#4CAF50' : (isDeceased ? '#BDBDBD' : '#E0E0E0'))}
+          strokeWidth={isHighlighted ? 3 : 1.5}
+          onMouseDown={(e) => { e.stopPropagation(); handleNodeClick(node); }}
+          onDoubleClick={(e) => { e.stopPropagation(); handleNodeDblClick(node); }}
+          onMouseEnter={() => {}} onMouseLeave={() => {}}
+        />
+        {/* 性别圆点 */}
+        <circle cx={14} cy={14} r={5} fill={genderColor} />
+        {/* 名字（大字体） */}
+        <text x={60} y={28} textAnchor="middle" fontSize={fontSize} fill={textColor} fontWeight={600}>
+          {node.name || '未知'}
+        </text>
+        {/* 辈分标签 */}
+        <text x={60} y={42} textAnchor="middle" fontSize={12} fill={isDark ? '#888' : '#666'}>
+          第{node.generation || '?'}代
+        </text>
+        {/* 生卒年 */}
+        <text x={60} y={54} textAnchor="middle" fontSize={10} fill={isDark ? '#999' : '#888'}>
+          {node.birthYear || '?'}{isDeceased ? '-' + node.deathYear : ' 至今'}
+        </text>
+        {/* 展开/收拢按钮 */}
+        {hasChildren && (
+          <g transform="translate(100, 40)" onClick={(e) => { e.stopPropagation(); handleNodeDblClick(node); }}>
+            <circle r={10} fill={isExpanded ? '#E8F5E9' : '#FFF3E0'} stroke="#E0E0E0" strokeWidth={1} />
+            <text textAnchor="middle" dy={3.5} fontSize={12} fill={isExpanded ? '#4A6741' : '#F57C00'}>
+              {isExpanded ? '−' : '+'}
+            </text>
+          </g>
+        )}
+        {/* 已故标记 */}
+        {isDeceased && <text x={105} y={14} fontSize={10} fill="#757575">✝</text>}
+      </g>
+    );
+  };
+
+  // 渲染连接线
+  const renderConnections = () => {
+    return connections.map((conn, i) => {
+      const fromX = conn.fromX + 60;
+      const fromY = conn.fromY + 60;
+      const toX = conn.toX + 60;
+      const toY = conn.toY;
+      const midY = (fromY + toY) / 2;
+
+      if (conn.isSpouse) {
+        return (
+          <line key={`conn-${i}`} x1={fromX} y1={fromY} x2={toX} y2={toY}
+            stroke={spouseLineColor} strokeWidth={2} strokeDasharray="6,4" />
+        );
+      }
+      // 直系血亲实线
+      return (
+        <path key={`conn-${i}`}
+          d={`M ${fromX} ${fromY} C ${fromX} ${midY}, ${toX} ${midY}, ${toX} ${toY}`}
+          fill="none" stroke={lineColor} strokeWidth={1.5} />
+      );
+    });
+  };
+
+  // ===== 三种视图渲染 =====
+  const renderTree = () => (
+    <svg ref={svgRef} width="100%" height="100%" style={{ touchAction: 'none' }}
+      onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+      onDoubleClick={handleCanvasDblClick}>
+      <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
+        {renderConnections()}
+        {nodes.map(node => renderNode(node))}
+      </g>
+    </svg>
+  );
+
+  const renderRadial = () => {
+    // 辐射图：以选定人物为中心
+    const centerX = 400, centerY = 300;
+    const radius = 150;
+    const radialNodes = nodes.slice(0, 20); // 限制数量
+    return (
+      <svg width="100%" height="100%" style={{ touchAction: 'none' }}>
+        <g transform={`translate(${offset.x}, ${offset.y}) scale(${scale})`}>
+          {/* 中心节点 */}
+          <circle cx={centerX} cy={centerY} r={40} fill="#E8F5E9" stroke="#4CAF50" strokeWidth={2} />
+          <text x={centerX} y={centerY - 5} textAnchor="middle" fontSize={16} fontWeight={600} fill={textColor}>
+            中心人物
+          </text>
+          <text x={centerX} y={centerY + 15} textAnchor="middle" fontSize={12} fill="#666">
+            {nodes[0]?.name || '未知'}
+          </text>
+          {/* 亲属节点 */}
+          {radialNodes.slice(1).map((node, i) => {
+            const angle = (2 * Math.PI * i) / radialNodes.length;
+            const x = centerX + radius * Math.cos(angle);
+            const y = centerY + radius * Math.sin(angle);
+            return (
+              <g key={node.id}>
+                <line x1={centerX} y1={centerY} x2={x} y2={y} stroke={lineColor} strokeWidth={1} strokeDasharray="4,4" />
+                <circle cx={x} cy={y} r={30} fill={nodeBg} stroke="#E0E0E0" strokeWidth={1} />
+                <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize={12} fill={textColor}>
+                  {node.name || '?'}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+    );
+  };
+
+  const renderList = () => {
+    // 列表图：按辈分分组
+    const groups = {};
+    nodes.forEach(n => {
+      const gen = n.generation || n.depth || '?';
+      if (!groups[gen]) groups[gen] = [];
+      groups[gen].push(n);
+    });
+    return (
+      <div style={{ overflow: 'auto', padding: 16, height: '100%' }}>
+        {Object.entries(groups).sort((a, b) => a[0] - b[0]).map(([gen, members]) => (
+          <div key={gen} style={{ marginBottom: 24 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 600, color: textColor, marginBottom: 12 }}>
+              第{gen}代
+            </h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {members.map(node => (
+                <div key={node.id} onClick={() => handleNodeClick(node)}
+                  style={{
+                    padding: '12px 16px', borderRadius: 10, background: nodeBg,
+                    border: selectedNode?.id === node.id ? '2px solid #4CAF50' : '1px solid #E0E0E0',
+                    cursor: 'pointer', minWidth: 120,
+                  }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: textColor }}>{node.name || '未知'}</div>
+                  <div style={{ fontSize: 12, color: isDark ? '#888' : '#666' }}>
+                    {node.birthYear || '?'}{node.deathYear ? '-' + node.deathYear : ' 至今'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: bgColor }}>
+      {/* 顶部工具栏 */}
+      <div style={{ padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={() => onNavigate?.('back')} style={{ padding: '6px 12px', fontSize: 14, border: '1px solid #E0E0E0', borderRadius: 6, background: nodeBg, cursor: 'pointer' }}>
+          ← 返回
+        </button>
+        <span style={{ fontSize: 18, fontWeight: 600, color: textColor, flex: 1 }}>🌳 族谱</span>
+
+        {/* 视图切换 */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {['tree', 'radial', 'list'].map(mode => (
+            <button key={mode} onClick={() => setViewMode(mode)}
+              style={{ padding: '6px 12px', fontSize: 13, border: '1px solid #E0E0E0', borderRadius: 6,
+                background: viewMode === mode ? '#4CAF50' : nodeBg, color: viewMode === mode ? 'white' : textColor,
+                cursor: 'pointer' }}>
+              {mode === 'tree' ? '🌳' : mode === 'radial' ? '🔘' : '📋'}
+            </button>
+          ))}
+        </div>
+
+        {/* 主题切换 */}
+        <button onClick={() => setTheme(t => t === 'traditional' ? 'modern' : 'traditional')}
+          style={{ padding: '6px 12px', fontSize: 13, border: '1px solid #E0E0E0', borderRadius: 6, background: nodeBg, cursor: 'pointer' }}>
+          {isDark ? '🌙' : '☀️'}
+        </button>
+
+        {/* 字体大小 */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={() => setFontSize(Math.max(14, fontSize - 2))} style={{ padding: '4px 8px', fontSize: 14, border: '1px solid #E0E0E0', borderRadius: 4, cursor: 'pointer' }}>A-</button>
+          <button onClick={() => setFontSize(Math.min(24, fontSize + 2))} style={{ padding: '4px 8px', fontSize: 14, border: '1px solid #E0E0E0', borderRadius: 4, cursor: 'pointer' }}>A+</button>
+        </div>
+      </div>
+
+      {/* 搜索栏 */}
+      <div style={{ padding: '0 12px 8px' }}>
+        <input type="text" placeholder="搜索人物..." value={searchQuery}
+          onChange={e => handleSearch(e.target.value)}
+          style={{ width: '100%', padding: '8px 12px', fontSize: 14, border: '1px solid #E0E0E0', borderRadius: 8, background: nodeBg, color: textColor }} />
+      </div>
+
+      {/* 族谱画布 */}
+      <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', cursor: dragging ? 'grabbing' : 'grab' }}>
+        {viewMode === 'tree' ? renderTree() : viewMode === 'radial' ? renderRadial() : renderList()}
+
+        {/* 缩放控制 */}
+        <div style={{ position: 'absolute', right: 8, top: 8, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
+          <button onClick={zoomIn} style={{ width: 36, height: 36, border: '1px solid #E0E0E0', borderRadius: 8, background: nodeBg, cursor: 'pointer', fontSize: 18 }}>+</button>
+          <span style={{ textAlign: 'center', fontSize: 11, color: isDark ? '#888' : '#666', padding: '2px 0' }}>{Math.round(scale * 100)}%</span>
+          <button onClick={zoomOut} style={{ width: 36, height: 36, border: '1px solid #E0E0E0', borderRadius: 8, background: nodeBg, cursor: 'pointer', fontSize: 18 }}>−</button>
+          <button onClick={resetView} style={{ width: 36, height: 36, border: '1px solid #E0E0E0', borderRadius: 8, background: nodeBg, cursor: 'pointer', fontSize: 14 }}>⟲</button>
+        </div>
+
+        {/* 全部展开/收拢 */}
+        <div style={{ position: 'absolute', left: 8, top: 8, display: 'flex', gap: 4, zIndex: 10 }}>
+          <button onClick={expandAll} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid #E0E0E0', borderRadius: 6, background: nodeBg, cursor: 'pointer' }}>全部展开</button>
+          <button onClick={collapseAll} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid #E0E0E0', borderRadius: 6, background: nodeBg, cursor: 'pointer' }}>全部收拢</button>
+          <button onClick={() => setShowLegend(!showLegend)} style={{ padding: '6px 12px', fontSize: 12, border: '1px solid #E0E0E0', borderRadius: 6, background: nodeBg, cursor: 'pointer' }}>图例</button>
+        </div>
+
+        {/* 搜索高亮提示 */}
+        {highlightedNode && (
+          <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', padding: '8px 16px', background: '#FFF3E0', borderRadius: 8, fontSize: 13, color: '#E65100' }}>
+            🔍 已找到「{searchQuery}」，高亮显示
+          </div>
+        )}
+      </div>
+
+      {/* 图例 */}
+      {showLegend && (
+        <div style={{ padding: '8px 12px', background: isDark ? '#2A2A4A' : '#F5F5F5', fontSize: 12, color: isDark ? '#888' : '#666' }}>
+          <b>图例：</b>
+          <span style={{ marginLeft: 12 }}>实线=直系血亲</span>
+          <span style={{ marginLeft: 12, display: 'inline-block', border: '1px dashed #FFB74D', width: 20, height: 2, verticalAlign: 'middle' }}></span>
+          <span style={{ marginLeft: 4 }}>配偶</span>
+          <span style={{ marginLeft: 12 }}>灰色=已故</span>
+        </div>
+      )}
+
+      {/* 底部提示 */}
+      <div style={{ padding: '4px 12px 8px', fontSize: 12, color: isDark ? '#666' : '#999', textAlign: 'center' }}>
+        💡 双指缩放 · 拖拽平移 · 双击展开/收拢 · 点击查看详情
+      </div>
+    </div>
+  );
+}
+
+export default FamilyTreePage;
